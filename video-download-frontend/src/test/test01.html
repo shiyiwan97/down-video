@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="utf-8">
+        <title>vue02</title>
+    </head>
+    <body id="body">
+        <!-- 在指定的标签之外是不起作用的 -->
+        {{ message }}
+        <!-- 开发环境版本，包含了有帮助的命令行警告 -->
+        <script src="vue.js"></script>
+        <!-- Vue会管理el选项命中的元素及其内部的后代元素 -->
+        <div id="app">
+            {{ message }}
+            <h2>
+                {{ message }}
+            </h2>
+        </div>
+        <script>
+          var vue = new Vue({
+            // el:"#app", //id选择器
+            // el:".app", //类选择器
+            // el: "div", // 标签选择器
+            el: '#body', // 不能使用HTML和BODY
+            data: {
+              message: 'Hello VUE!'
+            },
+          })
+        </script>
+    </body>
+</html>
