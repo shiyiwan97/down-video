@@ -1,8 +1,10 @@
 package com.shiyiwan.vedio_download;
 
+import com.shiyiwan.util.CmdUtil;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.chrome.ChromeDriver;
 import org.openqa.selenium.chrome.ChromeOptions;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.stereotype.Service;
@@ -17,6 +19,8 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Service
 @Component
@@ -25,45 +29,103 @@ public class VDService {
     @Value("${video-download.folder}")
     private String VIDEO_DOWNLOAD_FOLDER;
 
-    public void getVideo(String url, int seconds) throws AWTException {
+    @Value("${video-download.ffmpegPath}")
+    private String FFMPEG_PATH;
 
-        ChromeOptions chromeOptions = new ChromeOptions();
-        //指定驱动
-        System.setProperty("webdriver.chrome.driver", "./src/main/lib/chromedriver.exe");
-        //允许跨域请求
-        chromeOptions.addArguments("--remote-allow-origins=*");
-        //添加插件
-        chromeOptions.addExtensions(new File("./src/main/lib/cococut.crx"));
-        //设置下载地址
-        HashMap<String, Object> prefsMap = new HashMap();
-        prefsMap.put("download.default_directory", VIDEO_DOWNLOAD_FOLDER);
-        chromeOptions.setExperimentalOption("prefs", prefsMap);
+    @Autowired
+    VDMapper vdMapper;
 
-        WebDriver chromeDriver = new ChromeDriver(chromeOptions);
+    private final static int DOWNLOAD_STATE_IDLE = 0;
+    private final static int DOWNLOAD_STATE_DOWNLOADING = 1;
 
-        chromeDriver.get(url);
+    public String getVideo(String url, int seconds) {
+
+        int downloadState = vdMapper.getDownloadState();
+        if (downloadState == DOWNLOAD_STATE_IDLE) {
+            DownloadVideo task = new DownloadVideo(url, seconds);
+            Thread thread = new Thread(task);
+            thread.start();
+            return "已经开始下载...";
+        } else return "正在下载，稍后尝试（目前仅支持同一时间一个视频的下载）";
+
+    }
+
+    private class DownloadVideo implements Runnable {
+
+        private String url;
+        private int seconds;
+
+        public DownloadVideo(String url, int seconds) {
+            this.url = url;
+            this.seconds = seconds;
+        }
+
+        @Override
+        public void run() {
+            vdMapper.setDownloadState(DOWNLOAD_STATE_DOWNLOADING);
+            ChromeOptions chromeOptions = new ChromeOptions();
+            //指定驱动
+            System.setProperty("webdriver.chrome.driver", "./src/main/lib/chromedriver.exe");
+            //允许跨域请求
+            chromeOptions.addArguments("--remote-allow-origins=*");
+            //添加插件
+            chromeOptions.addExtensions(new File("./src/main/lib/cococut.crx"));
+            //设置下载地址
+            HashMap<String, Object> prefsMap = new HashMap();
+            prefsMap.put("download.default_directory", VIDEO_DOWNLOAD_FOLDER);
+            chromeOptions.setExperimentalOption("prefs", prefsMap);
+
+            WebDriver chromeDriver = new ChromeDriver(chromeOptions);
+
+            chromeDriver.get(url);
 //        List<String> windowHandleList = new ArrayList(chromeDriver.getWindowHandles());
 //        String lastPageHandle = windowHandleList.stream().filter(handle -> !handle.equals(chromeDriver.getWindowHandle())).collect(Collectors.toList()).get(0);
-        chromeDriver.switchTo().window(chromeDriver.getWindowHandle());
+            chromeDriver.switchTo().window(chromeDriver.getWindowHandle());
 
-        Robot robot = new Robot();
-        moveMouseAndClickLeft(robot, 825, 70);
-        moveMouseAndClickLeft(robot, 650, 200);
-        moveMouseAndClickLeft(robot, 520, 220);
-        moveMouseAndClickLeft(robot, 550, 460);
-        moveMouseAndClickLeft(robot, 670, 390);
-        moveMouse(robot, 520, 900);
-        moveMouseAndClickLeft(robot, 520, 670);
+            Robot robot = null;
+            try {
+                robot = new Robot();
+            } catch (AWTException e) {
+                e.printStackTrace();
+            }
+            moveMouseAndClickLeft(robot, 825, 70);
+            moveMouseAndClickLeft(robot, 650, 200);
+            moveMouseAndClickLeft(robot, 520, 220);
+            moveMouseAndClickLeft(robot, 550, 460);
+            moveMouseAndClickLeft(robot, 670, 390);
+            moveMouse(robot, 520, 900);
+            moveMouseAndClickLeft(robot, 520, 670);
 
-        try {
-            Thread.sleep((seconds + 10) * 1000L / 2);
-        } catch (InterruptedException e) {
-            e.printStackTrace();
+            try {
+                Thread.sleep((seconds + 10) * 1000L / 2);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+            moveMouseAndClickLeft(robot, 350, 40);
+            moveMouseAndClickLeft(robot, 640, 620);
+            chromeDriver.quit();
+            translateMP4TOMP3();
+            vdMapper.setDownloadState(DOWNLOAD_STATE_IDLE);
         }
-        moveMouseAndClickLeft(robot, 350, 40);
-        moveMouseAndClickLeft(robot, 640, 620);
+    }
 
-        chromeDriver.quit();
+    private void translateMP4TOMP3() {
+        File folder = new File(VIDEO_DOWNLOAD_FOLDER);
+        File[] files = folder.listFiles();
+        List<DownloadFile> fileList = new ArrayList<>();
+        for (File file : files) {
+            fileList.add(new DownloadFile(file.getName()));
+        }
+        List<String> fileNameWithoutSuffixList = fileList.stream().map(file -> file.getFileName()
+                .substring(0, file.getFileName().lastIndexOf("."))).collect(Collectors.toList());
+        List<String> mp3FileNameWithoutSuffixList = fileList.stream().filter(file -> file.getFileName().endsWith("mp3"))
+                .map(file -> file.getFileName().substring(0, file.getFileName().lastIndexOf("."))).collect(Collectors.toList());
+        fileNameWithoutSuffixList.removeAll(mp3FileNameWithoutSuffixList);
+        List<String> needTranslateFileName = fileNameWithoutSuffixList.stream().map(fileName -> fileName + ".mp4").collect(Collectors.toList());
+        needTranslateFileName.stream().forEach(fileName -> {
+            CmdUtil.translateMp4ToMp3(FFMPEG_PATH, VIDEO_DOWNLOAD_FOLDER + "\\" + fileName);
+        });
+
     }
 
     /**
@@ -160,6 +222,10 @@ public class VDService {
                 }
             }
         }
+    }
+
+    public void translateMp4ToMp3(String fileName) {
+        CmdUtil.translateMp4ToMp3(FFMPEG_PATH, VIDEO_DOWNLOAD_FOLDER + '\\' + fileName);
     }
 
     public static void main(String[] args) throws AWTException {

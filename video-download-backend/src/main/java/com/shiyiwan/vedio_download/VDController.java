@@ -15,31 +15,35 @@ import java.util.List;
 public class VDController {
 
     @Autowired
-    VDService VDService;
+    VDService vDService;
+
+    @Autowired
+    VDMapper vdMapper;
 
     @GetMapping("/getResource")
     public String getResource(@RequestParam("id") String id) {
+        vDService.translateMp4ToMp3("input.mp4");
         return "ok";
     }
 
     @GetMapping("/getVideo")
     public String getVideo(@RequestParam("url") String url, @RequestParam("seconds") int seconds) {
-        try {
-            VDService.getVideo(url, seconds);
-            return "ok";
-        } catch (AWTException e) {
-            e.printStackTrace();
-            return e.getMessage();
-        }
+        return vDService.getVideo(url, seconds);
     }
 
     @GetMapping("/listFile")
     public List<DownloadFile> listFile() {
-        return VDService.listFile();
+        return vDService.listFile();
     }
 
     @GetMapping("/getFile")
     public void getFile(HttpServletResponse httpServletResponse, @RequestParam("fileName") String fileName) {
-        VDService.getFile(httpServletResponse, fileName);
+        vDService.getFile(httpServletResponse, fileName);
     }
+
+    @GetMapping("/sql")
+    public void sql() {
+        vdMapper.getDownloadState();
+    }
+
 }
